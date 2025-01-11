@@ -8,7 +8,7 @@ tensorflow, matplotlib, numpy, pandas etc
 
 ---
 
-### 3. Build A Model
+### 3. Build a Model
 
 **a. Make Layers:**
 ```
@@ -24,7 +24,7 @@ model.compile(optimizer = 'optimizer_fn', loss = 'loss_fn', metrics = ['metrics'
 
 ---
 
-### 4. Input Data
+### 4. Train the Model
 
 ```
 model.fit(xData, yData, epochs = num)

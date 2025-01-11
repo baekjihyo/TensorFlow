@@ -27,7 +27,7 @@ for i, rows in data.iterrows():
     xData.append([ rows["math score"], rows["reading score"], rows["writing score"] ])
 
 
-# 3. Build A Model
+# 3. Build a Model
 
 model = tf.keras.models.Sequential([
     tf.keras.layers.Dense(64, activation = 'relu'),
@@ -40,7 +40,7 @@ model = tf.keras.models.Sequential([
 model.compile(optimizer = 'adam', loss = 'binary_crossentropy', metrics = ['accuracy'])
 
 
-# 4. Input Data
+# 4. Train the model
 
 model.fit(xData, yData, epochs = 10)
 
