@@ -19,8 +19,8 @@ shoes = np.array( [260, 255, 257,
                    230, 210, 207] )
 
 # Weights(random number)
-w1 = tf.Variable(0.1)
-w2 = tf.Variable(0.1)
+w1 = tf.Variable(1.0)
+w2 = tf.Variable(100.0)
 
 def GradientDescent():
     prediction = height * w1 + w2
