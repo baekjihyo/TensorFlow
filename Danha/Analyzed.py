@@ -90,4 +90,4 @@ accuracy = evaluation[1]
 
 # Print loss and accuracy
 print("Loss:", loss)
-print("Accuracy:", accuracy)
+print("Accuracy:", accuracy) 
