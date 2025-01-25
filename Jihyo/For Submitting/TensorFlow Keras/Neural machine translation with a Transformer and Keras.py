@@ -144,13 +144,13 @@ def make_batches(ds):
 train_batches = make_batches(train_examples)
 val_batches = make_batches(val_examples)
 
-# ---------------------------------------------------------------------------------
-# Display the shapes of the input and output tensors.
-'''
 # Take the first batch from the training set.
 for (pt, en), en_labels in train_batches.take(1):
   break
-  
+
+# ---------------------------------------------------------------------------------
+# Display the shapes of the input and output tensors.
+'''
 print(pt.shape)
 print(en.shape)
 print(en_labels.shape)
@@ -159,6 +159,11 @@ print(en[0][:10])
 print(en_labels[0][:10])
 '''
 # ---------------------------------------------------------------------------------
+
+# Positional Encoding
+
+# The model needs to know the position of the token in the sequence.
+# The positional encoding is added to the input embeddings to give the model some information about the relative position of the tokens in the sequence.
 
 def positional_encoding(length, depth):
   depth = depth/2
@@ -209,6 +214,10 @@ plt.show()
 '''
 # ---------------------------------------------------------------------------------
 
+# Add & Norm is scattered throughout the model
+
+# Positional Embedding
+
 class PositionalEmbedding(tf.keras.layers.Layer):
   def __init__(self, vocab_size, d_model):
     super().__init__()
@@ -235,12 +244,46 @@ en_emb = embed_en(en)
 
 en_emb._keras_mask
 
+# The BaseAttention layer
+
+# layers.MultiHeadAttention
+# layers.LayerNormalization
+# layers.Add
+
+# Here's a regular python dictionary, with 3 keys and 3 values being passed a single query.
+
+# d = {'color': 'blue', 'age': 22, 'type': 'pickup'}
+# result = d['color']
+
+# The querys is what you're trying to find.
+# The keys what sort of information the dictionary has.
+# The value is that information.
+
+# When you look up a query in a regular dictionary, the dictionary finds the matching key, and returns its associated value. 
+# The query either has a matching key or it doesn't. You can imagine a fuzzy dictionary where the keys don't have to match perfectly. 
+# If you looked up d["species"] in the dictionary above, maybe you'd want it to return "pickup" since that's the best match for the query.
+
+# An attention layer does a fuzzy lookup like this, but it's not just looking for the best key. 
+# It combines the values based on how well the query matches each key.
+
+# How does that work? In an attention layer the query, key, and value are each vectors. 
+# Instead of doing a hash lookup the attention layer combines the query and key vectors to determine how well they match, the "attention score". 
+# The layer returns the average across all the values, weighted by the "attention scores".
+
+# Each location the query-sequence provides a query vector. 
+# The context sequence acts as the dictionary. 
+# At each location in the context sequence provides a key and value vector. 
+# The input vectors are not used directly, the layers.MultiHeadAttention layer includes layers.
+# Dense layers to project the input vectors before using them.
+
 class BaseAttention(tf.keras.layers.Layer):
   def __init__(self, **kwargs):
     super().__init__()
     self.mha = tf.keras.layers.MultiHeadAttention(**kwargs)
     self.layernorm = tf.keras.layers.LayerNormalization()
     self.add = tf.keras.layers.Add()
+
+# The CrossAttention layer
 
 class CrossAttention(BaseAttention):
   def call(self, x, context):
@@ -258,11 +301,30 @@ class CrossAttention(BaseAttention):
 
     return x
 
+# ---------------------------------------------------------------------------------
+# Example of CrossAttention
+'''
 sample_ca = CrossAttention(num_heads=2, key_dim=512)
 
 print(pt_emb.shape)
 print(en_emb.shape)
 print(sample_ca(en_emb, pt_emb).shape)
+'''
+# ---------------------------------------------------------------------------------
+
+# The GlobalSelfAttention layer
+
+# RNNs and CNNs have their limitations.
+
+# The RNN allows information to flow all the way across the sequence, 
+# but it passes through many processing steps to get there (limiting gradient flow). 
+# These RNN steps have to be run sequentially and so the RNN is less able to take advantage of modern parallel devices.
+
+# In the CNN each location can be processed in parallel, but it only provides a limited receptive field. 
+# The receptive field only grows linearly with the number of CNN layers, 
+# You need to stack a number of Convolution layers to transmit information across the sequence (Wavenet reduces this problem by using dilated convolutions).
+# The global self-attention layer on the other hand lets every sequence element directly access every other sequence element, 
+# with only a few operations, and all the outputs can be computed in parallel.
 
 class GlobalSelfAttention(BaseAttention):
   def call(self, x):
@@ -274,11 +336,19 @@ class GlobalSelfAttention(BaseAttention):
     x = self.layernorm(x)
     return x
 
+# ---------------------------------------------------------------------------------
+# Example of GlobalSelfAttention
+'''
 sample_gsa = GlobalSelfAttention(num_heads=2, key_dim=512)
 
 print(pt_emb.shape)
 print(sample_gsa(pt_emb).shape)
+'''
+# ---------------------------------------------------------------------------------
 
+# The CausalSelfAttention layer
+
+# The causal mask ensures that each location only has access to the locations that come before it:
 class CausalSelfAttention(BaseAttention):
   def call(self, x):
     attn_output = self.mha(
@@ -290,6 +360,9 @@ class CausalSelfAttention(BaseAttention):
     x = self.layernorm(x)
     return x
 
+# ---------------------------------------------------------------------------------
+# Example of CausalSelfAttention
+'''
 sample_csa = CausalSelfAttention(num_heads=2, key_dim=512)
 
 print(en_emb.shape)
@@ -299,6 +372,15 @@ out1 = sample_csa(embed_en(en[:, :3]))
 out2 = sample_csa(embed_en(en))[:, :3]
 
 tf.reduce_max(abs(out1 - out2)).numpy()
+'''
+# ---------------------------------------------------------------------------------
+
+# The FeedForward layer
+
+# The transformer also includes this point-wise feed-forward network in both the encoder and decoder.
+
+# The feedforward layer is a simple stack of two dense layers.
+# The activation function is applied after the first dense layer.
 
 class FeedForward(tf.keras.layers.Layer):
   def __init__(self, d_model, dff, dropout_rate=0.1):
@@ -316,10 +398,17 @@ class FeedForward(tf.keras.layers.Layer):
     x = self.layer_norm(x) 
     return x
   
+# ---------------------------------------------------------------------------------
+# Example of FeedForward
+'''
 sample_ffn = FeedForward(512, 2048)
 
 print(en_emb.shape)
 print(sample_ffn(en_emb).shape)
+'''
+# ---------------------------------------------------------------------------------
+
+# The EncoderLayer
 
 class EncoderLayer(tf.keras.layers.Layer):
   def __init__(self,*, d_model, num_heads, dff, dropout_rate=0.1):
@@ -337,10 +426,21 @@ class EncoderLayer(tf.keras.layers.Layer):
     x = self.ffn(x)
     return x
 
+# ---------------------------------------------------------------------------------
+# Example of EncoderLayer
+'''
 sample_encoder_layer = EncoderLayer(d_model=512, num_heads=8, dff=2048)
 
 print(pt_emb.shape)
 print(sample_encoder_layer(pt_emb).shape)
+'''
+# ---------------------------------------------------------------------------------
+
+# The Encoder
+
+# The encoder consists of:
+# A PositionalEmbedding layer at the input.
+# A stack of EncoderLayer layers.
 
 class Encoder(tf.keras.layers.Layer):
   def __init__(self, *, num_layers, d_model, num_heads,
@@ -373,6 +473,9 @@ class Encoder(tf.keras.layers.Layer):
 
     return x  # Shape `(batch_size, seq_len, d_model)`.
 
+# ---------------------------------------------------------------------------------
+# Example of Encoder
+'''
 # Instantiate the encoder.
 sample_encoder = Encoder(num_layers=4,
                          d_model=512,
@@ -385,6 +488,10 @@ sample_encoder_output = sample_encoder(pt, training=False)
 # Print the shape.
 print(pt.shape)
 print(sample_encoder_output.shape)  # Shape `(batch_size, input_seq_len, d_model)`.
+'''
+# ---------------------------------------------------------------------------------
+
+# The DecoderLayer
 
 class DecoderLayer(tf.keras.layers.Layer):
   def __init__(self,
@@ -417,6 +524,9 @@ class DecoderLayer(tf.keras.layers.Layer):
     x = self.ffn(x)  # Shape `(batch_size, seq_len, d_model)`.
     return x
 
+# ---------------------------------------------------------------------------------
+# Example of DecoderLayer
+'''
 sample_decoder_layer = DecoderLayer(d_model=512, num_heads=8, dff=2048)
 
 sample_decoder_layer_output = sample_decoder_layer(
@@ -425,6 +535,10 @@ sample_decoder_layer_output = sample_decoder_layer(
 print(en_emb.shape)
 print(pt_emb.shape)
 print(sample_decoder_layer_output.shape)  # `(batch_size, seq_len, d_model)`
+'''
+# ---------------------------------------------------------------------------------
+
+# The Decoder
 
 class Decoder(tf.keras.layers.Layer):
   def __init__(self, *, num_layers, d_model, num_heads, dff, vocab_size,
@@ -458,6 +572,9 @@ class Decoder(tf.keras.layers.Layer):
     # The shape of x is (batch_size, target_seq_len, d_model).
     return x
 
+# ---------------------------------------------------------------------------------
+# Example of Decoder
+'''
 # Instantiate the decoder.
 sample_decoder = Decoder(num_layers=4,
                          d_model=512,
@@ -475,6 +592,15 @@ print(pt_emb.shape)
 print(output.shape)
 
 sample_decoder.last_attn_scores.shape  # (batch, heads, target_seq, input_seq)
+'''
+# ---------------------------------------------------------------------------------
+
+# The Transformer
+
+# You now have Encoder and Decoder. 
+# To complete the Transformer model, you need to put them together and add a final linear (Dense) layer which converts the resulting vector at each location into output token probabilities.
+
+# The output of the decoder is the input to this final linear layer.
 
 class Transformer(tf.keras.Model):
   def __init__(self, *, num_layers, d_model, num_heads, dff,
@@ -514,11 +640,15 @@ class Transformer(tf.keras.Model):
     # Return the final output and the attention weights.
     return logits
 
+# Hyperparameters
+
 num_layers = 4
 d_model = 128
 dff = 512
 num_heads = 8
 dropout_rate = 0.1
+
+# Instantiate the Transformer model.
 
 transformer = Transformer(
     num_layers=num_layers,
@@ -529,6 +659,9 @@ transformer = Transformer(
     target_vocab_size=tokenizers.en.get_vocab_size().numpy(),
     dropout_rate=dropout_rate)
 
+# ---------------------------------------------------------------------------------
+# Example of Transformer
+'''
 output = transformer((pt, en))
 
 print(en.shape)
@@ -539,6 +672,12 @@ attn_scores = transformer.decoder.dec_layers[-1].last_attn_scores
 print(attn_scores.shape)  # (batch, heads, target_seq, input_seq)
 
 transformer.summary()
+'''
+# ---------------------------------------------------------------------------------
+
+# Custom Learning Rate Schedule
+
+# Use the Adam optimizer with a custom learning rate scheduler according to the formula in the paper(Attention is All You Need).
 
 class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
   def __init__(self, d_model, warmup_steps=4000):
@@ -561,9 +700,19 @@ learning_rate = CustomSchedule(d_model)
 optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98,
                                      epsilon=1e-9)
 
+# ---------------------------------------------------------------------------------
+# Example of CustomSchedule
+'''
 plt.plot(learning_rate(tf.range(40000, dtype=tf.float32)))
 plt.ylabel('Learning Rate')
 plt.xlabel('Train Step')
+plt.show()
+'''
+# ---------------------------------------------------------------------------------
+
+# Loss and Metrics
+
+# Since the target sequences are padded, it is important to apply a padding mask when calculating the loss.
 
 def masked_loss(label, pred):
   mask = label != 0
@@ -591,6 +740,7 @@ def masked_accuracy(label, pred):
   mask = tf.cast(mask, dtype=tf.float32)
   return tf.reduce_sum(match)/tf.reduce_sum(mask)
 
+# Compile the model
 transformer.compile(
     loss=masked_loss,
     optimizer=optimizer,
@@ -599,6 +749,8 @@ transformer.compile(
 transformer.fit(train_batches,
                 epochs=20,
                 validation_data=val_batches)
+
+# Define the Translator class by subclassing tf.Module.
 
 class Translator(tf.Module):
   def __init__(self, tokenizers, transformer):
@@ -663,6 +815,10 @@ def print_translation(sentence, tokens, ground_truth):
   print(f'{"Prediction":15s}: {tokens.numpy().decode("utf-8")}')
   print(f'{"Ground truth":15s}: {ground_truth}')
 
+# ---------------------------------------------------------------------------------
+# Examples
+''''''
+# example 0
 sentence = 'este é um problema que temos que resolver.'
 ground_truth = 'this is a problem we have to solve .'
 
@@ -701,6 +857,8 @@ ground_truth = "this is the first book i've ever done."
 translated_text, translated_tokens, attention_weights = translator(
     tf.constant(sentence))
 print_translation(sentence, translated_text, ground_truth)
+''''''
+# ---------------------------------------------------------------------------------
 
 def plot_attention_head(in_tokens, translated_tokens, attention):
   # The model didn't generate `<START>` in the output. Skip it.
@@ -724,12 +882,11 @@ attention_heads = tf.squeeze(attention_weights, 0)
 attention = attention_heads[head]
 attention.shape
 
+# Portuguese is the input language.
 in_tokens = tf.convert_to_tensor([sentence])
 in_tokens = tokenizers.pt.tokenize(in_tokens).to_tensor()
 in_tokens = tokenizers.pt.lookup(in_tokens)[0]
 in_tokens
-
-translated_tokens
 
 plot_attention_head(in_tokens, translated_tokens, attention)
 
@@ -754,6 +911,14 @@ plot_attention_weights(sentence,
                        translated_tokens,
                        attention_weights[0])
 
+# ---------------------------------------------------------------------------------
+# Example of plot_attention_weights
+'''
+# The model can handle unfamiliar words. 
+# Neither 'triceratops' nor 'encyclopédia' are in the input dataset, 
+# and the model attempts to transliterate them even without a shared vocabulary. 
+
+# For example:
 sentence = 'Eu li sobre triceratops na enciclopédia.'
 ground_truth = 'I read about triceratops in the encyclopedia.'
 
@@ -762,6 +927,10 @@ translated_text, translated_tokens, attention_weights = translator(
 print_translation(sentence, translated_text, ground_truth)
 
 plot_attention_weights(sentence, translated_tokens, attention_weights[0])
+'''
+# ---------------------------------------------------------------------------------
+
+# Export the model
 
 class ExportTranslator(tf.Module):
   def __init__(self, translator):
