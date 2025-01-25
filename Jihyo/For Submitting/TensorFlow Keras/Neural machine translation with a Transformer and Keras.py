@@ -1,3 +1,6 @@
+# Transformer model: translate portuguese to english
+# This example trains a Transformer model to translate Portuguese to English using the Multi30k dataset.
+
 import logging
 import time
 
@@ -9,15 +12,20 @@ import tensorflow as tf
 
 import tensorflow_text
 
+logging.getLogger('tensorflow').setLevel(logging.ERROR) # surpress logging
+
 # Data Handling
 
-# Download the Portuguese-English translation dataset.
+# Download the Portuguese-English translation dataset from the TED Talks Open Translation Project.
 examples, metadata = tfds.load('ted_hrlr_translate/pt_to_en',
                                with_info=True,
                                as_supervised=True)
 
 train_examples, val_examples = examples['train'], examples['validation']
 
+# ---------------------------------------------------------------------------------
+# Display the first two examples from the dataset.
+'''
 for pt_examples, en_examples in train_examples.batch(3).take(1):
   print('> Examples in Portuguese:')
   for pt in pt_examples.numpy():
@@ -27,8 +35,18 @@ for pt_examples, en_examples in train_examples.batch(3).take(1):
   print('> Examples in English:')
   for en in en_examples.numpy():
     print(en.decode('utf-8'))
+  print()
+'''
+# ---------------------------------------------------------------------------------
 
-# Set up tokenizers to generate text sequences.
+# Tokenization
+
+# To train the model, the text must be converted to numbers. 
+# The model will generate numbers for the output, which must be converted back to text.
+
+# Download and extract the pre-trained subwords tokenizer.
+# The subwords tokenizer encodes the string by breaking it into subwords if the word is not in its dictionary.
+
 model_name = 'ted_hrlr_translate_pt_en_converter'
 tf.keras.utils.get_file(
     f'{model_name}.zip',
@@ -40,25 +58,40 @@ tokenizers = tf.saved_model.load(model_name)
 
 [item for item in dir(tokenizers.en) if not item.startswith('_')]
 
+# ---------------------------------------------------------------------------------
+# Example of tokenization 
+'''
 print('> This is a batch of strings:')
 for en in en_examples.numpy():
   print(en.decode('utf-8'))
+print()
 
+# Tokenize english examples
 encoded = tokenizers.en.tokenize(en_examples)
 
 print('> This is a padded-batch of token IDs:')
 for row in encoded.to_list():
   print(row)
+print()
 
+# Decode the encoded token
 round_trip = tokenizers.en.detokenize(encoded)
 
 print('> This is human-readable text:')
 for line in round_trip.numpy():
   print(line.decode('utf-8'))
+print()
 
 print('> This is the text split into tokens:')
 tokens = tokenizers.en.lookup(encoded)
+print(tokens)
+print()
+'''
+# ---------------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------------
+# Calculate the maximum length of the tokenized sentences.
+'''
 lengths = []
 
 for pt_examples, en_examples in train_examples.batch(1024):
@@ -68,21 +101,26 @@ for pt_examples, en_examples in train_examples.batch(1024):
   en_tokens = tokenizers.en.tokenize(en_examples)
   lengths.append(en_tokens.row_lengths())
   print('.', end='', flush=True)
-
+print()
 
 all_lengths = np.concatenate(lengths)
 
+# Plot the distribution of the token lengths.
 plt.hist(all_lengths, np.linspace(0, 500, 101))
 plt.ylim(plt.ylim())
 max_length = max(all_lengths)
 plt.plot([max_length, max_length], plt.ylim())
 plt.title(f'Maximum tokens per example: {max_length}');
+# plt.show()
+'''
+# ---------------------------------------------------------------------------------
 
+# Prepare the dataset for training
 MAX_TOKENS=128
 def prepare_batch(pt, en):
-    pt = tokenizers.pt.tokenize(pt)      # Output is ragged.
-    pt = pt[:, :MAX_TOKENS]    # Trim to MAX_TOKENS.
-    pt = pt.to_tensor()  # Convert to 0-padded dense Tensor
+    pt = tokenizers.pt.tokenize(pt)
+    pt = pt[:, :MAX_TOKENS] # Trim to MAX_TOKENS.
+    pt = pt.to_tensor()     # Convert to 0-padded dense Tensor
 
     en = tokenizers.en.tokenize(en)
     en = en[:, :(MAX_TOKENS+1)]
@@ -106,15 +144,21 @@ def make_batches(ds):
 train_batches = make_batches(train_examples)
 val_batches = make_batches(val_examples)
 
+# ---------------------------------------------------------------------------------
+# Display the shapes of the input and output tensors.
+'''
+# Take the first batch from the training set.
 for (pt, en), en_labels in train_batches.take(1):
   break
-
+  
 print(pt.shape)
 print(en.shape)
 print(en_labels.shape)
 
 print(en[0][:10])
 print(en_labels[0][:10])
+'''
+# ---------------------------------------------------------------------------------
 
 def positional_encoding(length, depth):
   depth = depth/2
@@ -131,18 +175,23 @@ def positional_encoding(length, depth):
 
   return tf.cast(pos_encoding, dtype=tf.float32)
 
+# ---------------------------------------------------------------------------------
 pos_encoding = positional_encoding(length=2048, depth=512)
-
+# ---------------------------------------------------------------------------------
+# Plot the dimensions.
 # Check the shape.
+'''
 print(pos_encoding.shape)
 
-# Plot the dimensions.
 plt.pcolormesh(pos_encoding.numpy().T, cmap='RdBu')
 plt.ylabel('Depth')
 plt.xlabel('Position')
 plt.colorbar()
 plt.show()
-
+'''
+# ---------------------------------------------------------------------------------
+# Check the orthogonality of the positional encoding.
+'''
 pos_encoding/=tf.norm(pos_encoding, axis=1, keepdims=True)
 p = pos_encoding[1000]
 dots = tf.einsum('pd,d -> p', pos_encoding, p)
@@ -156,6 +205,9 @@ plt.subplot(2,1,2)
 plt.plot(dots)
 plt.xlim([950, 1050])
 plt.ylim([0,1])
+plt.show()
+'''
+# ---------------------------------------------------------------------------------
 
 class PositionalEmbedding(tf.keras.layers.Layer):
   def __init__(self, vocab_size, d_model):
@@ -189,9 +241,6 @@ class BaseAttention(tf.keras.layers.Layer):
     self.mha = tf.keras.layers.MultiHeadAttention(**kwargs)
     self.layernorm = tf.keras.layers.LayerNormalization()
     self.add = tf.keras.layers.Add()
-
-d = {'color': 'blue', 'age': 22, 'type': 'pickup'}
-result = d['color']
 
 class CrossAttention(BaseAttention):
   def call(self, x, context):
