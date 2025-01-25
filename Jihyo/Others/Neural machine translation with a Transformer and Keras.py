@@ -9,6 +9,9 @@ import tensorflow as tf
 
 import tensorflow_text
 
+# Data Handling
+
+# Download the Portuguese-English translation dataset.
 examples, metadata = tfds.load('ted_hrlr_translate/pt_to_en',
                                with_info=True,
                                as_supervised=True)
@@ -25,6 +28,7 @@ for pt_examples, en_examples in train_examples.batch(3).take(1):
   for en in en_examples.numpy():
     print(en.decode('utf-8'))
 
+# Set up tokenizers to generate text sequences.
 model_name = 'ted_hrlr_translate_pt_en_converter'
 tf.keras.utils.get_file(
     f'{model_name}.zip',
