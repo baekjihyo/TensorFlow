@@ -11,7 +11,7 @@ import pandas as pd
 
 # 2. Process Data
 
-data = pd.read_csv('c:/Users/baekj/Documents/GitHub/TensorFlow/Jihyo/DataSets/StudentsPerformance.csv')
+data = pd.read_csv('c:/Users/baekj/Documents/GitHub/TensorFlow/DataSets/StudentsPerformance.csv')
 data = data.dropna()
 
 xData = []
@@ -25,7 +25,6 @@ for i, rows in data.iterrows():
 
 for i, rows in data.iterrows():
     xData.append([ rows["math score"], rows["reading score"], rows["writing score"] ])
-
 
 # 3. Build a Model
 
