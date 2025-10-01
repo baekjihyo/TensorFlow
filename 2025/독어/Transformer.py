@@ -2,12 +2,10 @@ import tensorflow as tf
 import numpy as np
 
 # 1. 데이터 로드
-# 귀찮아서 그냥 다 여기 옮겨적을거임.
-de_sentences = ["Hallo Welt", "Ich liebe dich", "Wie geht es dir?"]
-en_sentences = ["Hello world", "I love you", "How are you?"]
-ko_sentences = ["안녕 세상", "사랑해", "잘 지내?"]
+de_sentences = ["Mein Lieblingstier ist Wal.", "Mein Lieblingstier ist Wal.", "Mein Lieblingstier ist Wal.", "Mein Lieblingstier ist Wal."]
+en_sentences = ["Whale is my favorite animal.", "My favorite animal is whale.", "I like whale the most.", "I like whale more than any other animal."]
+ko_sentences = ["고래는 제가 가장 좋아하는 동물입니다.", "제가 가장 좋아하는 동물은 고래입니다.", "저는 고래를 가장 좋아합니다.", "저는 고래를 다른 어떤 동물보다 좋아합니다."]
 
-# 예시: 독-한 / 독-영 / 영-한 병렬
 de_ko_pairs = list(zip(de_sentences, ko_sentences))
 de_en_pairs = list(zip(de_sentences, en_sentences))
 en_ko_pairs = list(zip(en_sentences, ko_sentences))
@@ -15,7 +13,6 @@ en_ko_pairs = list(zip(en_sentences, ko_sentences))
 # 2. 토크나이저 준비
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-
 def build_tokenizer(sentences, num_words=1000):
     tokenizer = Tokenizer(num_words=num_words, filters='')
     tokenizer.fit_on_texts(sentences)
@@ -56,9 +53,9 @@ de_en_model = build_transformer(len(de_tokenizer.word_index)+1, len(en_tokenizer
 en_ko_model = build_transformer(len(en_tokenizer.word_index)+1, len(ko_tokenizer.word_index)+1)
 
 # 4. 학습
-de_ko_model.fit(de_ko_src, np.expand_dims(de_ko_tgt, -1), epochs=1000, verbose=0)
-de_en_model.fit(de_en_src, np.expand_dims(de_en_tgt, -1), epochs=1000, verbose=0)
-en_ko_model.fit(en_ko_src, np.expand_dims(en_ko_tgt, -1), epochs=1000, verbose=0)
+de_ko_model.fit(de_ko_src, np.expand_dims(de_ko_tgt, -1), epochs=500, verbose=0)
+de_en_model.fit(de_en_src, np.expand_dims(de_en_tgt, -1), epochs=500, verbose=0)
+en_ko_model.fit(en_ko_src, np.expand_dims(en_ko_tgt, -1), epochs=500, verbose=0)
 
 # 5. 번역 함수
 def translate(sentence, model, src_tok, tgt_tok, maxlen=10):
@@ -70,7 +67,7 @@ def translate(sentence, model, src_tok, tgt_tok, maxlen=10):
     return " ".join([inv_map.get(i, '') for i in pred_ids if i > 0])
 
 # 6. 직접 번역 vs 간접 번역 비교
-test_sentence = "Ich liebe dich"
+test_sentence = "Mein Lieblingstier ist Wal."
 
 direct = translate(test_sentence, de_ko_model, de_tokenizer, ko_tokenizer)
 pivot_en = translate(test_sentence, de_en_model, de_tokenizer, en_tokenizer)
