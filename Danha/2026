@@ -1,1 +1,36 @@
+import serial
+import csv
+import time
+import os
 
+PORT = "COM3"      # 아두이노 포트에 맞게 수정
+BAUD = 115200
+DURATION = 3       # 한 파일당 측정 시간: 3초
+
+label = input("동작 입력 rock/scissors/paper: ")
+count = input("몇 번째 파일인지 입력 예: 01, 02, 03: ")
+
+filename = f"{label}_{count}.csv"
+
+ser = serial.Serial(PORT, BAUD)
+time.sleep(2)
+
+with open(filename, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["time_ms", "value"])
+
+    start = time.time()
+
+    while time.time() - start < DURATION:
+        line = ser.readline().decode(errors="ignore").strip()
+
+        if "," in line:
+            parts = line.split(",")
+
+            if len(parts) == 2:
+                t, v = parts
+                writer.writerow([t, v])
+
+ser.close()
+
+print(f"저장 완료: {filename}")
